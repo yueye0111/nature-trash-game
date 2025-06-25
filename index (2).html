@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>森林環保接垃圾遊戲</title>
+<style>
+  html, body {
+    margin:0; padding:0; height:100%;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    user-select: none;
+    background: url("https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1920&q=80") no-repeat center center fixed;
+    background-size: cover;
+    background-color: #004d00;
+  }
+  #gameArea {
+    position: relative;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+  }
+  #scoreboard {
+    position: fixed;
+    top: 15px; right: 20px;
+    background: rgba(0,0,0,0.6);
+    color: #c6f0c6;
+    font-size: 22px;
+    padding: 10px 18px;
+    border-radius: 12px;
+    z-index: 100;
+    width: 160px;
+    text-align: center;
+    user-select:none;
+  }
+  #bucket {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 80px;
+    background: rgba(50,150,50,0.9);
+    border-radius: 0 0 20px 20px;
+    border: 3px solid #c6f0c6;
+    box-sizing: border-box;
+    font-size: 48px;
+    text-align: center;
+    line-height: 80px;
+    user-select: none;
+  }
+  .garbage {
+    position: absolute;
+    font-size: 48px;
+    user-select: none;
+    pointer-events: none;
+    filter: drop-shadow(0 0 3px black);
+  }
+  #message {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 50, 0, 0.85);
+    color: #c6f0c6;
+    padding: 40px 60px;
+    border-radius: 20px;
+    text-align: center;
+    font-size: 24px;
+    z-index: 200;
+    user-select: none;
+    max-width: 90vw;
+  }
+  #message button {
+    margin-top: 25px;
+    padding: 12px 40px;
+    font-size: 20px;
+    border: none;
+    border-radius: 12px;
+    background: #32a852;
+    color: white;
+    cursor: pointer;
+  }
+  #message button:hover {
+    background: #2b8642;
+  }
+</style>
+</head>
+<body>
+
+<div id="gameArea">
+  <div id="bucket" aria-label="回收桶">🗑️</div>
+</div>
+
+<div id="scoreboard" style="display:none;" role="region" aria-live="polite" aria-atomic="true">
+  分數: 0<br />
+  剩餘時間: 20秒
+</div>
+
+<div id="message" role="dialog" aria-modal="true">
+  <h1>森林環保接垃圾遊戲</h1>
+  <p><strong>遊戲說明：</strong></p>
+  <ul style="text-align:left; max-width: 400px; margin: 0 auto;">
+    <li>用左右方向鍵控制底部的回收桶左右移動。</li>
+    <li>從上方掉落的垃圾有小垃圾和大型垃圾兩種。</li>
+    <li>接住小垃圾可獲得5分，接住大型垃圾可獲得10分。</li>
+    <li>垃圾掉落速度會隨時間逐漸加快。</li>
+    <li>遊戲限時20秒，目標分數為60分以上才算過關。</li>
+    <li>未接住垃圾不會扣分，但要努力接住更多垃圾！</li>
+  </ul>
+  <p>準備好保護森林環境了嗎？快開始遊戲吧！</p>
+  <button id="startBtn" aria-label="開始遊戲">開始遊戲</button>
+</div>
+
+<script>
+(() => {
+  const gameArea = document.getElementById('gameArea');
+  const bucket = document.getElementById('bucket');
+  const scoreboard = document.getElementById('scoreboard');
+  const message = document.getElementById('message');
+  const startBtn = document.getElementById('startBtn');
+
+  const gameWidth = window.innerWidth;
+  const gameHeight = window.innerHeight;
+
+  let score = 0;
+  let timeLeft = 20;
+  let gameRunning = false;
+  let garbageFallSpeed = 2;
+  let garbageSpawnInterval = 1200;
+  let bucketSpeed = 15;
+
+  let garbageElements = [];
+  let bucketX = gameWidth / 2 - bucket.offsetWidth / 2;
+
+  // 垃圾種類：小垃圾5分，大垃圾10分
+  const garbageTypes = [
+    { emoji: '🥤', points: 5 },  // 小垃圾
+    { emoji: '🍬', points: 5 },  // 小垃圾
+    { emoji: '🗑️', points: 10 }, // 大垃圾
+    { emoji: '🍌', points: 5 },  // 小垃圾
+    { emoji: '🛋️', points: 10 }, // 大垃圾
+  ];
+
+  function updateScoreboard() {
+    scoreboard.innerHTML = `分數: ${score}<br />剩餘時間: ${timeLeft}秒`;
+  }
+
+  function createGarbage() {
+    const type = garbageTypes[Math.floor(Math.random() * garbageTypes.length)];
+    const elem = document.createElement('div');
+    elem.classList.add('garbage');
+    elem.textContent = type.emoji;
+    elem.style.left = Math.random() * (gameWidth - 50) + 'px';
+    elem.style.top = '-60px';
+    elem.dataset.points = type.points;
+    gameArea.appendChild(elem);
+    garbageElements.push(elem);
+  }
+
+  function updateGarbage() {
+    garbageElements.forEach((elem, idx) => {
+      let top = parseFloat(elem.style.top);
+      top += garbageFallSpeed;
+      elem.style.top = top + 'px';
+
+      // 碰撞檢查
+      const bucketRect = bucket.getBoundingClientRect();
+      const garbageRect = elem.getBoundingClientRect();
+
+      if (
+        garbageRect.bottom >= bucketRect.top &&
+        garbageRect.left < bucketRect.right &&
+        garbageRect.right > bucketRect.left &&
+        garbageRect.bottom < bucketRect.bottom + 10
+      ) {
+        score += parseInt(elem.dataset.points);
+        updateScoreboard();
+        elem.remove();
+        garbageElements.splice(idx, 1);
+      } else if (top > gameHeight) {
+        elem.remove();
+        garbageElements.splice(idx, 1);
+      }
+    });
+  }
+
+  function moveBucket(direction) {
+    if (!gameRunning) return;
+    if (direction === 'left') {
+      bucketX = Math.max(0, bucketX - bucketSpeed);
+    } else if (direction === 'right') {
+      bucketX = Math.min(gameWidth - bucket.offsetWidth, bucketX + bucketSpeed);
+    }
+    bucket.style.left = bucketX + 'px';
+  }
+
+  let lastSpawnTime = 0;
+  let lastFrameTime = 0;
+
+  function gameLoop(timestamp = 0) {
+    if (!gameRunning) return;
+
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const delta = timestamp - lastFrameTime;
+
+    if (timestamp - lastSpawnTime > garbageSpawnInterval) {
+      createGarbage();
+      lastSpawnTime = timestamp;
+    }
+
+    updateGarbage();
+
+    lastFrameTime = timestamp;
+    requestAnimationFrame(gameLoop);
+  }
+
+  let timerId = null;
+  function startTimer() {
+    timerId = setInterval(() => {
+      if (!gameRunning) return;
+      timeLeft--;
+      updateScoreboard();
+
+      if (timeLeft <= 0) {
+        endGame();
+      }
+
+      if (timeLeft === 10) {
+        garbageFallSpeed += 2;
+        if (garbageSpawnInterval > 400) {
+          garbageSpawnInterval -= 500;
+        }
+      }
+    }, 1000);
+  }
+
+  function endGame() {
+    gameRunning = false;
+    clearInterval(timerId);
+    garbageElements.forEach((e) => e.remove());
+    garbageElements = [];
+    scoreboard.style.display = 'none';
+
+    message.style.display = 'block';
+
+    if (score >= 60) {
+      message.innerHTML = `
+        <h1>🎉 恭喜過關！</h1>
+        <p>你的分數是：${score}分</p>
+        <button id="startBtn" aria-label="重新開始遊戲">重新開始</button>
+      `;
+    } else {
+      message.innerHTML = `
+        <h1>😢 遊戲失敗！</h1>
+        <p>你的分數是：${score}分</p>
+        <button id="startBtn" aria-label="再試一次">再試一次</button>
+      `;
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startGame);
+  }
+
+  function startGame() {
+    score = 0;
+    timeLeft = 20;
+    garbageFallSpeed = 2;
+    garbageSpawnInterval = 1200;
+    bucketX = gameWidth / 2 - bucket.offsetWidth / 2;
+    bucket.style.left = bucketX + 'px';
+
+    scoreboard.style.display = 'block';
+    message.style.display = 'none';
+    updateScoreboard();
+
+    gameRunning = true;
+    lastSpawnTime = 0;
+    lastFrameTime = 0;
+
+    clearInterval(timerId);
+    startTimer();
+    requestAnimationFrame(gameLoop);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (!gameRunning) return;
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+      moveBucket('left');
+    } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+      moveBucket('right');
+    }
+  });
+
+  startBtn.addEventListener('click', startGame);
+})();
+</script>
+
+</body>
+</html>
