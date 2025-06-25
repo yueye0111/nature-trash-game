@@ -1,3 +1,4 @@
+<!-- 修正版 level2.html -->
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -56,8 +57,9 @@
       background: rgba(0,0,0,0.7);
       padding: 30px;
       border-radius: 10px;
+      z-index: 999;
     }
-    #result a button {
+    #result a button, #result button {
       margin-top: 20px;
       padding: 10px 25px;
       font-size: 20px;
@@ -67,7 +69,7 @@
       border-radius: 8px;
       cursor: pointer;
     }
-    #result a button:hover {
+    #result a button:hover, #result button:hover {
       background-color: #2b8642;
     }
   </style>
@@ -103,6 +105,7 @@
     let countdownInterval;
 
     function startGame() {
+      // 隱藏 intro
       document.getElementById("intro").style.display = "none";
       scoreBoard.style.display = "block";
       timerBoard.style.display = "block";
@@ -112,47 +115,39 @@
       scoreBoard.innerText = `分數：${score}`;
       timerBoard.innerText = `時間：${timeLeft}`;
 
-      spawnInterval = setInterval(spawnTrash, 500);
+      // 移除舊的 result 畫面（關鍵修正）
+      const oldResult = document.getElementById("result");
+      if (oldResult) oldResult.remove();
 
+      spawnInterval = setInterval(spawnTrash, 500);
       countdownInterval = setInterval(() => {
         timeLeft--;
         timerBoard.innerText = `時間：${timeLeft}`;
-        if (timeLeft <= 0) {
-          endGame();
-        }
+        if (timeLeft <= 0) endGame();
       }, 1000);
     }
 
     function spawnTrash() {
       if (gameEnded) return;
       const count = Math.floor(Math.random() * 4) + 1;
-
       for (let i = 0; i < count; i++) {
         const trash = document.createElement("div");
         trash.classList.add("trash");
-
         const isReal = Math.random() < 0.6;
         trash.dataset.real = isReal ? "true" : "false";
         trash.innerText = isReal ? "🗑️" : "🍂";
-
         const x = Math.random() * (window.innerWidth - 60);
         const y = Math.random() * (window.innerHeight - 60);
         trash.style.left = `${x}px`;
         trash.style.top = `${y}px`;
-
         trash.onclick = () => {
           if (!trash.parentNode) return;
           trash.remove();
-          if (trash.dataset.real === "true") {
-            score++;
-          } else {
-            score = Math.max(0, score - 2);
-          }
+          score += (trash.dataset.real === "true") ? 1 : -2;
+          if (score < 0) score = 0;
           scoreBoard.innerText = `分數：${score}`;
         };
-
         gameArea.appendChild(trash);
-
         trash.removeTimeout = setTimeout(() => {
           if (trash.parentNode) trash.remove();
         }, 2000);
@@ -163,7 +158,6 @@
       gameEnded = true;
       clearInterval(spawnInterval);
       clearInterval(countdownInterval);
-
       document.querySelectorAll('.trash').forEach(t => {
         clearTimeout(t.removeTimeout);
         t.remove();
