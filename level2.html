@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>大自然撿垃圾遊戲・挑戰版</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; height: 100%; overflow: hidden;
+    }
+    body {
+      background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80') no-repeat center center fixed;
+      background-size: cover;
+      font-family: "Microsoft JhengHei", sans-serif;
+      color: #fff;
+      text-align: center;
+    }
+    #game-area {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    #intro {
+      background: rgba(0,0,0,0.6);
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 30px;
+      border-radius: 10px;
+    }
+    #start-btn {
+      padding: 12px 30px; font-size: 20px; cursor: pointer;
+    }
+    #score, #timer {
+      position: absolute;
+      top: 20px;
+      font-size: 24px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px 20px;
+      border-radius: 8px;
+    }
+    #score { left: 20px; }
+    #timer { right: 20px; }
+    .trash {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 40px;
+    }
+    #result {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 30px;
+      background: rgba(0,0,0,0.7);
+      padding: 30px;
+      border-radius: 10px;
+    }
+    #result a button {
+      margin-top: 20px;
+      padding: 10px 25px;
+      font-size: 20px;
+      background-color: #32a852;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #result a button:hover {
+      background-color: #2b8642;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-area">
+    <div id="intro">
+      <h1>🌲 大自然撿垃圾挑戰版 🗑️</h1>
+      <p>在美麗的大自然裡，點擊畫面上的<strong>真垃圾</strong>，小心避開假垃圾！</p>
+      <p>🎯 <strong>遊戲規則：</strong></p>
+      <ul style="text-align: left;">
+        <li>⏱ <strong>時間限制</strong>：20 秒</li>
+        <li>✅ <strong>目標</strong>：20 秒內至少撿到 25 個真垃圾。</li>
+        <li>❌ <strong>假垃圾</strong>（🍂）點到會扣 2 分，請小心！</li>
+        <li>📊 <strong>得分方式</strong>：每撿到一個真垃圾加 1 分。</li>
+        <li>🎉 <strong>挑戰成功</strong>：完成後分數達 25 分或更多才算成功！</li>
+      </ul>
+      <button id="start-btn" onclick="startGame()">開始挑戰</button>
+    </div>
+    <div id="score" style="display:none;">分數：0</div>
+    <div id="timer" style="display:none;">時間：20</div>
+  </div>
+
+  <script>
+    const gameArea = document.getElementById("game-area");
+    const scoreBoard = document.getElementById("score");
+    const timerBoard = document.getElementById("timer");
+    let score = 0;
+    const winScore = 25;
+    let spawnInterval;
+    let gameEnded = false;
+    let timeLeft = 20;
+    let countdownInterval;
+
+    function startGame() {
+      document.getElementById("intro").style.display = "none";
+      scoreBoard.style.display = "block";
+      timerBoard.style.display = "block";
+      score = 0;
+      timeLeft = 20;
+      gameEnded = false;
+      scoreBoard.innerText = `分數：${score}`;
+      timerBoard.innerText = `時間：${timeLeft}`;
+
+      spawnInterval = setInterval(spawnTrash, 500);
+
+      countdownInterval = setInterval(() => {
+        timeLeft--;
+        timerBoard.innerText = `時間：${timeLeft}`;
+        if (timeLeft <= 0) {
+          endGame();
+        }
+      }, 1000);
+    }
+
+    function spawnTrash() {
+      if (gameEnded) return;
+      const count = Math.floor(Math.random() * 4) + 1;
+
+      for (let i = 0; i < count; i++) {
+        const trash = document.createElement("div");
+        trash.classList.add("trash");
+
+        const isReal = Math.random() < 0.6;
+        trash.dataset.real = isReal ? "true" : "false";
+        trash.innerText = isReal ? "🗑️" : "🍂";
+
+        const x = Math.random() * (window.innerWidth - 60);
+        const y = Math.random() * (window.innerHeight - 60);
+        trash.style.left = `${x}px`;
+        trash.style.top = `${y}px`;
+
+        trash.onclick = () => {
+          if (!trash.parentNode) return;
+          trash.remove();
+          if (trash.dataset.real === "true") {
+            score++;
+          } else {
+            score = Math.max(0, score - 2);
+          }
+          scoreBoard.innerText = `分數：${score}`;
+        };
+
+        gameArea.appendChild(trash);
+
+        trash.removeTimeout = setTimeout(() => {
+          if (trash.parentNode) trash.remove();
+        }, 2000);
+      }
+    }
+
+    function endGame() {
+      gameEnded = true;
+      clearInterval(spawnInterval);
+      clearInterval(countdownInterval);
+
+      document.querySelectorAll('.trash').forEach(t => {
+        clearTimeout(t.removeTimeout);
+        t.remove();
+      });
+
+      const result = document.createElement("div");
+      result.id = "result";
+      if (score >= winScore) {
+        result.innerHTML = `
+          <h2>🎉 太厲害了！你通過了終極挑戰！</h2>
+          <p>你成功撿了 ${score} 個真垃圾！</p>
+          <a href="level3.html"><button aria-label="繼續闖關">繼續闖關</button></a>
+        `;
+      } else {
+        result.innerHTML = `
+          <h2>😢 很遺憾，挑戰失敗...</h2>
+          <p>你只撿了 ${score} 個真垃圾，未達 ${winScore} 分！</p>
+          <button onclick="startGame()">再試一次</button>
+        `;
+      }
+      gameArea.appendChild(result);
+    }
+  </script>
+</body>
+</html>

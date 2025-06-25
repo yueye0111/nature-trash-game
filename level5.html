@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<title>海灘清潔大作戰</title>
+<style>
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1470&q=80') no-repeat center center fixed;
+    background-size: cover;
+    overflow: hidden;
+    user-select: none;
+  }
+  #game {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+  }
+  #turtle {
+    position: absolute;
+    bottom: 10px;
+    left: 20%;
+    font-size: 50px;
+    z-index: 10;
+  }
+  .trash {
+    position: absolute;
+    font-size: 32px;
+    cursor: grab;
+    user-select: none;
+    transition: left 0.1s, top 0.1s;
+  }
+  #bin {
+    position: absolute;
+    bottom: 10px;
+    left: 70%;
+    font-size: 80px;
+    z-index: 5;
+  }
+  #ui {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 10px 15px;
+    border-radius: 10px;
+    font-size: 1.1em;
+    z-index: 100;
+    user-select: none;
+  }
+  #instructions {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    max-width: 350px;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 0.95em;
+    z-index: 99;
+    user-select: none;
+  }
+  #result {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    color: white;
+    font-size: 2em;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 1000;
+    text-align: center;
+    padding: 20px;
+    user-select: none;
+  }
+  #result button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 1em;
+    background: #26a69a;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<audio id="bgm" loop autoplay>
+  <source src="https://cdn.pixabay.com/download/audio/2022/10/13/audio_36871e219a.mp3?filename=soft-beach-ambient-121128.mp3" type="audio/mpeg" />
+</audio>
+
+<div id="game">
+  <div id="turtle">🐢</div>
+  <div id="bin">🗑️</div>
+
+  <div id="instructions">
+    🎮 遊戲說明：<br>
+    拖曳垃圾（🧴、🥤、🍟）到右下角的 🗑️ 垃圾桶中。<br><br>
+    ✅ 成功清理 <strong>15 個垃圾</strong> 即可獲勝。<br>
+    ❌ 若垃圾撞上海龜或掉落地面超過 <strong>5 次</strong>，遊戲失敗。<br>
+    ⏱️ 限時 45 秒！
+  </div>
+
+  <div id="ui">
+    清理垃圾：<span id="score">0</span> / 15<br>
+    地面失誤：<span id="misses">0</span> / 5<br>
+    時間：<span id="time">45</span> 秒
+  </div>
+</div>
+
+<div id="result">
+  <div id="message"></div>
+  <button onclick="startGame()">再玩一次</button>
+</div>
+
+<script>
+  const game = document.getElementById("game");
+  const scoreEl = document.getElementById("score");
+  const timeEl = document.getElementById("time");
+  const missEl = document.getElementById("misses");
+  const result = document.getElementById("result");
+  const message = document.getElementById("message");
+  const turtle = document.getElementById("turtle");
+  const bin = document.getElementById("bin");
+
+  let score = 0;
+  let time = 45;
+  let misses = 0;
+  const TRASH_TARGET = 15;
+  const MISS_LIMIT = 5;
+  let gameOver = false;
+  let gameInterval, timerInterval;
+
+  const trashIcons = ["🧴", "🥤", "🍟"];
+  const FALL_INTERVAL = 30;
+  const TRASH_SIZE = 32;
+
+  // 一次只能拖一個垃圾
+  let currentlyDraggingTrash = null;
+
+  // 用來存每個垃圾的掉落Interval，方便取消
+  let fallIntervals = new Map();
+
+  function spawnTrash() {
+    if (gameOver || score >= TRASH_TARGET) return;
+
+    const trash = document.createElement("div");
+    trash.className = "trash";
+    trash.textContent = trashIcons[Math.floor(Math.random() * trashIcons.length)];
+    trash.style.left = Math.random() * (window.innerWidth - TRASH_SIZE) + "px";
+    trash.style.top = "0px";
+    game.appendChild(trash);
+
+    let fallSpeed = 1 + Math.random() * 2;
+    let dragging = false;
+
+    function fall() {
+      if (gameOver || dragging) {
+        clearInterval(fallIntervals.get(trash));
+        fallIntervals.delete(trash);
+        return;
+      }
+
+      let top = parseFloat(trash.style.top);
+      top += fallSpeed;
+      trash.style.top = top + "px";
+
+      const trashRect = trash.getBoundingClientRect();
+      const turtleRect = turtle.getBoundingClientRect();
+
+      if (
+        trashRect.bottom >= turtleRect.top &&
+        trashRect.left < turtleRect.right &&
+        trashRect.right > turtleRect.left
+      ) {
+        endGame(false, "垃圾撞到海龜了！");
+        clearInterval(fallIntervals.get(trash));
+        fallIntervals.delete(trash);
+      }
+
+      if (top > window.innerHeight - TRASH_SIZE) {
+        misses++;
+        missEl.textContent = misses;
+        trash.remove();
+        clearInterval(fallIntervals.get(trash));
+        fallIntervals.delete(trash);
+        if (misses >= MISS_LIMIT) {
+          endGame(false, "垃圾掉地上太多次了！");
+        }
+      }
+    }
+
+    fallIntervals.set(trash, setInterval(fall, FALL_INTERVAL));
+
+    trash.addEventListener("mousedown", (e) => {
+      if (gameOver) return;
+      if (currentlyDraggingTrash) return; // 限制一次只拖一個垃圾
+      currentlyDraggingTrash = trash;
+      dragging = true;
+
+      // 停止掉落
+      clearInterval(fallIntervals.get(trash));
+      fallIntervals.delete(trash);
+
+      const offsetX = e.offsetX;
+      const offsetY = e.offsetY;
+
+      function moveAt(pageX, pageY) {
+        // 防止拖出視窗
+        let newX = pageX - offsetX;
+        let newY = pageY - offsetY;
+        newX = Math.min(window.innerWidth - TRASH_SIZE, Math.max(0, newX));
+        newY = Math.min(window.innerHeight - TRASH_SIZE, Math.max(0, newY));
+        trash.style.left = newX + "px";
+        trash.style.top = newY + "px";
+      }
+
+      function onMouseMove(e) {
+        moveAt(e.pageX, e.pageY);
+      }
+
+      document.addEventListener("mousemove", onMouseMove);
+
+      trash.style.cursor = "grabbing";
+
+      document.addEventListener("mouseup", onMouseUp);
+
+      function onMouseUp(e) {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+
+        trash.style.cursor = "grab";
+
+        const binRect = bin.getBoundingClientRect();
+        const trashRect = trash.getBoundingClientRect();
+
+        if (
+          trashRect.bottom >= binRect.top &&
+          trashRect.left < binRect.right &&
+          trashRect.right > binRect.left
+        ) {
+          // 成功丟垃圾桶，垃圾消失，計分+1
+          score++;
+          scoreEl.textContent = score;
+          trash.remove();
+          currentlyDraggingTrash = null;
+
+          if (score >= TRASH_TARGET) {
+            endGame(true);
+          }
+        } else {
+          // 放開沒丟進垃圾桶，繼續掉落
+          dragging = false;
+          currentlyDraggingTrash = null;
+
+          // 繼續掉落
+          fallIntervals.set(trash, setInterval(function () {
+            if (gameOver || dragging) {
+              clearInterval(fallIntervals.get(trash));
+              fallIntervals.delete(trash);
+              return;
+            }
+            let top = parseFloat(trash.style.top);
+            top += fallSpeed;
+            trash.style.top = top + "px";
+
+            const trashRect = trash.getBoundingClientRect();
+            const turtleRect = turtle.getBoundingClientRect();
+
+            if (
+              trashRect.bottom >= turtleRect.top &&
+              trashRect.left < turtleRect.right &&
+              trashRect.right > turtleRect.left
+            ) {
+              endGame(false, "垃圾撞到海龜了！");
+              clearInterval(fallIntervals.get(trash));
+              fallIntervals.delete(trash);
+            }
+
+            if (top > window.innerHeight - TRASH_SIZE) {
+              misses++;
+              missEl.textContent = misses;
+              trash.remove();
+              clearInterval(fallIntervals.get(trash));
+              fallIntervals.delete(trash);
+              if (misses >= MISS_LIMIT) {
+                endGame(false, "垃圾掉地上太多次了！");
+              }
+            }
+          }, FALL_INTERVAL));
+        }
+      }
+    });
+  }
+
+  function updateTimer() {
+    if (gameOver) return;
+    time--;
+    timeEl.textContent = time;
+    if (time <= 0) {
+      endGame(score >= TRASH_TARGET, "時間到了！");
+    }
+  }
+
+  function endGame(won, reason = "") {
+    gameOver = true;
+    clearInterval(gameInterval);
+    clearInterval(timerInterval);
+    document.querySelectorAll(".trash").forEach(t => t.remove());
+    fallIntervals.forEach((interval) => clearInterval(interval));
+    fallIntervals.clear();
+    currentlyDraggingTrash = null;
+
+    if (won) {
+      message.textContent = "🎉 成功拯救海灘！你清理了 15 個垃圾！";
+    } else {
+      message.textContent = "😢 挑戰失敗！" + (reason ? " 原因：" + reason : "");
+    }
+
+    result.style.display = "flex";
+  }
+
+  function startGame() {
+    score = 0;
+    time = 45;
+    misses = 0;
+    gameOver = false;
+    scoreEl.textContent = score;
+    timeEl.textContent = time;
+    missEl.textContent = misses;
+    result.style.display = "none";
+    currentlyDraggingTrash = null;
+
+    gameInterval = setInterval(spawnTrash, 900);
+    timerInterval = setInterval(updateTimer, 1000);
+  }
+
+  startGame();
+</script>
+
+</body>
+</html>
